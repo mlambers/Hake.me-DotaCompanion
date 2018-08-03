@@ -1,5 +1,5 @@
 -----------------
--- Version 0.3 --
+-- Version 0.4 --
 -----------------
 
 local DotaCompanion = {}
@@ -10,19 +10,24 @@ DotaCompanion.offsetX = Menu.AddOption({ "mlambers", "Dota Companion" }, "2. Men
 DotaCompanion.offsetY = Menu.AddOption({"mlambers", "Dota Companion" }, "3. Menu y offset", "", 0, 500, 10)
 DotaCompanion.size = Menu.AddOption({"mlambers", "Dota Companion" }, "4. Menu size", "", 1, 32, 1)
 DotaCompanion.KeyShowHide = Menu.AddKeyOption({ "mlambers", "Dota Companion"}, "5. Key show/hide panel", Enum.ButtonCode.KEY_F)
+--***********--
 
 DotaCompanion.NeedInit = true
 DotaCompanion.CanDraw = false
 
 DotaCompanion.NextTick = 0
+DotaCompanion.SecondSinceFirstLoad = 0
+DotaCompanion.DoneLoadAll = false
 DotaCompanion.OutsideGameReset = false
 
-DotaCompanion.FontCooldown = Renderer.LoadFont("Verdana", 20, Enum.FontWeight.NORMAL)
+DotaCompanion.FontPlayerName = Renderer.LoadFont("Verdana", 20, Enum.FontWeight.EXTRABOLD)
+DotaCompanion.FontTotalMatches = Renderer.LoadFont("Verdana", 17, Enum.FontWeight.NORMAL)
+DotaCompanion.FontTotalMatches2 = Renderer.LoadFont("Tahoma", 10, Enum.FontWeight.EXTRABOLD)
 
 DotaCompanion.StateShowButton = true
 
 local ScreenWidth, ScreenHeight = nil, nil
-local PlayerTable = {nil, nil, nil, nil, nil}
+local PlayerTable = {nil, nil, nil, nil, nil, nil, nil, nil, nil, nil}
 
 local MathFunction = {}
 MathFunction.Floor = math.floor
@@ -35,6 +40,19 @@ Assets.PathMenu2 = "panorama/images/control_icons/"
 Assets.Path = "panorama/images/heroes/selection/"
 Assets.DefaultWidthSize = 45
 Assets.DefaultHeightSize = 55
+
+local PlayerColor = {
+	{51, 117, 255},
+	{102, 255, 191},
+	{191, 0, 191},
+	{243, 240, 11},
+	{255, 107, 0},
+	{254, 134, 194},
+	{161, 180, 71},
+	{101, 217, 247},
+	{0, 131, 33},
+	{164, 105, 0}
+}
 
 local HeroesID = {
 	"npc_dota_hero_antimage",
@@ -169,10 +187,12 @@ function DotaCompanion.OnScriptLoad()
 	for i = #PlayerTable, 1, -1 do
 		PlayerTable[i] = nil
 	end
-	PlayerTable = {nil, nil, nil, nil, nil}
+	PlayerTable = {nil, nil, nil, nil, nil, nil, nil, nil, nil, nil}
 	
 	ScreenWidth, ScreenHeight = nil, nil
 	DotaCompanion.NextTick = 0
+	DotaCompanion.SecondSinceFirstLoad = 0
+	DotaCompanion.DoneLoadAll = false
 	DotaCompanion.OutsideGameReset = false
 	DotaCompanion.StateShowButton = true
 	DotaCompanion.CanDraw = false
@@ -193,11 +213,14 @@ function DotaCompanion.OnGameEnd()
 	for i = #PlayerTable, 1, -1 do
 		PlayerTable[i] = nil
 	end
-	PlayerTable = {nil, nil, nil, nil, nil}
+	PlayerTable = {nil, nil, nil, nil, nil, nil, nil, nil, nil, nil}
 	
 	ScreenWidth, ScreenHeight = nil, nil
 	DotaCompanion.NextTick = 0
+	DotaCompanion.SecondSinceFirstLoad = 0
+	DotaCompanion.DoneLoadAll = false
 	DotaCompanion.OutsideGameReset = false
+	
 	DotaCompanion.StateShowButton = true
 	DotaCompanion.CanDraw = false
 	DotaCompanion.NeedInit = true
@@ -221,8 +244,38 @@ function DotaCompanion.LoadImage(prefix, name, path)
 	end
 end
 
+function DotaCompanion.LoadDire()
+	for i = 1, Players.Count() do
+		local EntityPlayer = Players.Get(i)
+		if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Player.GetPlayerID(EntityPlayer) > 4 then
+			PlayerTable[Player.GetPlayerID(EntityPlayer) + 1] = {
+				"Player " .. (Player.GetPlayerID(EntityPlayer) + 1),
+				HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid) .. "/behaviorChart?lobbyType=7&isParty=false"):AsyncRequest("GET"),
+				false
+			}
+			--Console.Print(Player.GetPlayerID(EntityPlayer) .. " " .. Player.GetName(EntityPlayer) .. " Team num: " .. Entity.GetTeamNum(EntityPlayer))
+		end
+	end
+end
+
+function DotaCompanion.LoadRadiant()
+	for i = 1, Players.Count() do
+		local EntityPlayer = Players.Get(i)
+		if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Player.GetPlayerID(EntityPlayer) < 5 then
+			PlayerTable[Player.GetPlayerID(EntityPlayer) + 1] = {
+				"Player " .. (Player.GetPlayerID(EntityPlayer) + 1),
+				HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid) .. "/behaviorChart?lobbyType=7&isParty=false"):AsyncRequest("GET"),
+				false
+			}
+			--Console.Print(Player.GetPlayerID(EntityPlayer) .. " " .. Player.GetName(EntityPlayer))
+		end
+	end
+end
+
 function DotaCompanion.OnDraw()
+	-- Check if Player in a match or not
 	if Engine.IsInGame() == false then 
+		-- If outside match and need to reset variable
 		if DotaCompanion.OutsideGameReset == true then
 			for k in pairs(Assets.Images) do
 				Assets.Images[k] = nil
@@ -236,7 +289,8 @@ function DotaCompanion.OnDraw()
 			
 			ScreenWidth, ScreenHeight = nil, nil
 			DotaCompanion.NextTick = 0
-			
+			DotaCompanion.SecondSinceFirstLoad = 0
+			DotaCompanion.DoneLoadAll = false
 			DotaCompanion.StateShowButton = true
 			DotaCompanion.CanDraw = false
 			DotaCompanion.NeedInit = true
@@ -244,229 +298,325 @@ function DotaCompanion.OnDraw()
 			Console.Print("DotaCompanion.OutsideGameReset()")
 		end
 	end
+	
 	if not Menu.IsEnabled(DotaCompanion.optionEnable) then return end
 	if GameRules.GetGameState() < 2 then return end
-	
+
 	if DotaCompanion.NeedInit == true then
-		--Console.Print(GameRules.GetServerGameState())
-		for i = 1, Players.Count() do
-			local EntityPlayer = Players.Get(i)
-			if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.IsSameTeam(Players.GetLocal(), EntityPlayer) == false then
-			--if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Player.GetPlayerID(EntityPlayer) < 5 then
-				if Player.GetPlayerID(EntityPlayer) < 5 then
-					PlayerTable[Player.GetPlayerID(EntityPlayer) + 1] = {
-						Player.GetName(EntityPlayer),
-						HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid) .. "/behaviorChart?lobbyType=7&isParty=false"):AsyncRequest("GET"),
-						false
-					}
-					--Console.Print((Player.GetPlayerID(EntityPlayer) + 1) .. " " .. Player.GetName(EntityPlayer))
-				else
-					PlayerTable[Player.GetPlayerID(EntityPlayer) - 4] = {
-						Player.GetName(EntityPlayer),
-						HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid) .. "/behaviorChart?lobbyType=7&isParty=false"):AsyncRequest("GET"),
-						false
-					}
-					--Console.Print((Player.GetPlayerID(EntityPlayer) - 4) .. " " .. Player.GetName(EntityPlayer))
-				end
-					
-			end
+		local GetMyTeam = Entity.GetTeamNum(Players.GetLocal())
+		--Console.Print(GetMyTeam)
+		if GetMyTeam == 1 or GetMyTeam == 3 then -- If my team number equal 1, I'm spectator or I'm watching replay
+			DotaCompanion.LoadRadiant()
+		elseif GetMyTeam == 2 then
+			DotaCompanion.LoadDire()
 		end
+		
 		DotaCompanion.LoadImage("Menu_", "dotaplus_logo", Assets.PathMenu)
 		DotaCompanion.LoadImage("Menu_", "quit", Assets.PathMenu2)
-		DotaCompanion.CanDraw = true
+		
 		ScreenWidth, ScreenHeight = Renderer.GetScreenSize()
+		DotaCompanion.CanDraw = true
 		DotaCompanion.OutsideGameReset = true
+		DotaCompanion.SecondSinceFirstLoad = os.clock() + 5
 		DotaCompanion.NeedInit = false
 	end
 	
 	if DotaCompanion.CanDraw == true then
-		local xDefault = MathFunction.Ceil(ScreenWidth * 0.05)
-		local yDefault = MathFunction.Ceil(ScreenHeight * 0.1)
-		local Longest = 0
-		local HeightBox = 0
-		Renderer.SetDrawColor(0, 0, 0, 255)
-		local TextWidth2, TextHeight2 = Renderer.MeasureText(DotaCompanion.FontCooldown,	"G: ")
-		local HeightBackground = (Assets.DefaultHeightSize + TextHeight2 + TextHeight2) * 5
+		local xDefault = MathFunction.Ceil(ScreenWidth * 0.18)
+		local yDefault = MathFunction.Ceil(ScreenHeight * 0.05)
+		
 		if DotaCompanion.StateShowButton == true then
-			Renderer.DrawFilledRect(xDefault, yDefault, MathFunction.Ceil(ScreenWidth * 0.9), HeightBackground+10)
+			Renderer.SetDrawColor(47, 44, 54, 255)
+			Renderer.DrawFilledRect(xDefault, yDefault, 860, 600)
+		end
+		xDefault = xDefault + 10
+		yDefault = yDefault + 10
+		
+		if DotaCompanion.DoneLoadAll == false and DotaCompanion.SecondSinceFirstLoad < os.clock() then
+			local GetMyTeam = Entity.GetTeamNum(Players.GetLocal())
+			if GetMyTeam == 1 or GetMyTeam == 3 then
+				DotaCompanion.LoadDire()
+				
+				Console.Print("Done load all")
+				DotaCompanion.DoneLoadAll = true
+			elseif GetMyTeam == 2 then
+				DotaCompanion.LoadRadiant()
+				
+				Console.Print("Done load all")
+				DotaCompanion.DoneLoadAll = true
+			end
 		end
 		
-		for i = 1, 5 do
+		for i = 1, 10 do
 			local TableValue = PlayerTable[i]
 			if TableValue ~= nil and TableValue[2] ~= nil then
-				
-				if TableValue[3] == false  and TableValue[2]:IsResolved() then
+				if TableValue[3] == false and TableValue[2]:IsResolved() then
 					if DotaCompanion.NextTick < os.clock() then
-						-- Check midpoint pos of Player name
-						
-						local body = TableValue[2]:Get()
+						if i < 6 then
+							local body = TableValue[2]:Get()
 							local result = JSON.Decode(body)
-						
-						if result ~= nil then
-							
-							result = result.heroes
-							table.sort(result, function (left, right)
-								return left['matchCount'] > right['matchCount']
-							end)
-
-							PlayerTable[i] = {
-								TableValue[1],
-								result,
-								true,
-								{},
-								{
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil}
-								},
-								{
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil}
-								},
-								{
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil},
-									{nil,nil}
-								},
-								nil
-							}
-							local TextWidth, TextHeight = Renderer.MeasureText(DotaCompanion.FontCooldown, TableValue[1] .. " : ")
-							
-							local MidPoint = MathFunction.Floor( ( (Assets.DefaultHeightSize + TextHeight2 + TextHeight2) - TextHeight) * 0.5)
-							
-							local HeightYnew = 0
-							if i == 1 then
-								HeightYnew = yDefault
-							elseif i > 1 then
-								HeightYnew = ((i-1) * ( Assets.DefaultHeightSize + TextHeight2 + TextHeight2)) + yDefault
-							end
-							-- Set player name x, y coordinate
-							PlayerTable[i][4][1] = 5 + xDefault
-							PlayerTable[i][4][2] = 10 + (HeightYnew + MidPoint)
-							
-							if #result > 0 then
+							if result ~= nil then
+								-- Get the heroes table
+								local heroesResult = result.heroes
 								
-								for SizeTable = 1, #result do
-									
-									local Value = result[SizeTable]
-									if Value then
-										local PositionX = (5 + xDefault) + TextWidth + (SizeTable * Assets.DefaultWidthSize) + ((SizeTable - 1) * 8)
-										--Console.Print(PositionX)
-										-- Set Heroes images x, y coordinate
-										PlayerTable[i][5][SizeTable][1] = PositionX
-										PlayerTable[i][5][SizeTable][2] = 10 + HeightYnew
-										-- Set Heroes total games y coordinate and text
-										PlayerTable[i][6][SizeTable][1] = 10 + HeightYnew + Assets.DefaultHeightSize
-										PlayerTable[i][6][SizeTable][2] =  "G: " .. MathFunction.Floor(Value.matchCount)
-										--Console.Print(type(Value.matchCount))
-										-- Set Heroes total win with that heroes y coordinate and text
-										PlayerTable[i][7][SizeTable][1] = 10 + HeightYnew + Assets.DefaultHeightSize + TextHeight2
-										PlayerTable[i][7][SizeTable][2] =  "W: " .. MathFunction.Floor(Value.winCount)
-										
-										-- Now try to load Images
-										
-										DotaCompanion.LoadImage("icon_", HeroesID[Value.heroId], Assets.Path)
+								table.sort(heroesResult, function (left, right)
+									return left['matchCount'] > right['matchCount']
+								end)
+								
+								PlayerTable[i] = {
+									TableValue[1],
+									heroesResult,
+									true,
+									{nil, nil, nil, nil},
+									{nil, nil, nil},
+									{nil, nil, nil},
+									{
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil}
+									}
+								}
+								
+								local Separator = (i - 1) * 10
+								local OffsetXcoor = (160 * (i-1)) + xDefault + Separator
+								
+								-- Setup for Text Player Name
+								local WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontPlayerName, TableValue[1])
+								-- Get mid position x,y for player name
+								local CoorXTemp = OffsetXcoor + MathFunction.Floor((160 - WidthTemp) * 0.5)
+								local CoorYTemp = yDefault + MathFunction.Floor((250 * 0.1) - HeightTemp)
+								PlayerTable[i][4][1] = OffsetXcoor
+								PlayerTable[i][4][2] = yDefault
+								PlayerTable[i][4][3] = CoorXTemp
+								PlayerTable[i][4][4] = CoorYTemp
+								
+								
+								-- Setup for Text Total Matches found from STRATZ API
+								WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches, "Matches: " .. result.matchCount .. "/25")
+								CoorXTemp = (OffsetXcoor + 10) + MathFunction.Floor((160 - WidthTemp) * 0.5)
+								CoorYTemp = CoorYTemp + HeightTemp + 20
+								PlayerTable[i][5][1] = "Matches: " .. MathFunction.Floor(result.matchCount) .. "/25"
+								PlayerTable[i][5][2] = CoorXTemp
+								PlayerTable[i][5][3] = CoorYTemp
+
+								-- Setup for Text Win Count from Total Matches
+								WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches, "Win: " .. result.winCount)
+								CoorXTemp = (OffsetXcoor + 10) + MathFunction.Floor((160 - WidthTemp) * 0.5)
+								CoorYTemp = CoorYTemp + HeightTemp
+								PlayerTable[i][6][1] = "Win: " .. MathFunction.Floor(result.winCount)
+								PlayerTable[i][6][2] = CoorXTemp
+								PlayerTable[i][6][3] = CoorYTemp
+								
+								if #heroesResult > 0 then
+									for TableIndex = 1, 9 do
+										local Value = heroesResult[TableIndex]
+										if Value ~= nil then
+											if TableIndex >= 1 and TableIndex <= 3 then
+												local CoordinateX = (OffsetXcoor + 10) + ((TableIndex - 1) * 45) + ((TableIndex - 1) * 5)
+												local CoordinateY = CoorYTemp + 40
+												PlayerTable[i][7][TableIndex][1] = CoordinateX
+												PlayerTable[i][7][TableIndex][2] = CoordinateY
+												
+												DotaCompanion.LoadImage("icon_", HeroesID[Value.heroId], Assets.Path)
+												
+												WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches2, MathFunction.Floor(Value.matchCount))
+												PlayerTable[i][7][TableIndex][3] = MathFunction.Floor(Value.matchCount)
+												PlayerTable[i][7][TableIndex][4] = CoordinateX + (45 - (WidthTemp * 2))
+												PlayerTable[i][7][TableIndex][5] = CoordinateY + (40 - (HeightTemp * 1.5))
+											elseif TableIndex >= 4 and TableIndex <= 6 then
+												local CoordinateX = (OffsetXcoor + 10) + ((TableIndex - 4) * 45) + ((TableIndex - 4) * 5)
+												local CoordinateY = CoorYTemp + 40 + 40 + 10
+												PlayerTable[i][7][TableIndex][1] = CoordinateX
+												
+												PlayerTable[i][7][TableIndex][2] = CoordinateY
+												
+												DotaCompanion.LoadImage("icon_", HeroesID[Value.heroId], Assets.Path)
+												
+												WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches2, MathFunction.Floor(Value.matchCount))
+												PlayerTable[i][7][TableIndex][3] = MathFunction.Floor(Value.matchCount)
+												PlayerTable[i][7][TableIndex][4] = CoordinateX + (45 - (WidthTemp * 2))
+												PlayerTable[i][7][TableIndex][5] = CoordinateY + (40 - (HeightTemp * 1.5))
+												
+											elseif TableIndex >= 7 and TableIndex <= 9 then
+												local CoordinateX = (OffsetXcoor + 10) + ((TableIndex - 7) * 45) + ((TableIndex - 7) * 5)
+												local CoordinateY = CoorYTemp + 40 + 80 + 20
+												PlayerTable[i][7][TableIndex][1] = CoordinateX
+												
+												PlayerTable[i][7][TableIndex][2] = CoordinateY
+												
+												DotaCompanion.LoadImage("icon_", HeroesID[Value.heroId], Assets.Path)
+												
+												WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches2, MathFunction.Floor(Value.matchCount))
+												PlayerTable[i][7][TableIndex][3] = MathFunction.Floor(Value.matchCount)
+												PlayerTable[i][7][TableIndex][4] = CoordinateX + (45 - (WidthTemp * 2))
+												PlayerTable[i][7][TableIndex][5] = CoordinateY + (40 - (HeightTemp * 1.5))
+											end
+										end
 									end
 								end
+								
+							else
+								PlayerTable[i] = nil
 							end
-							
-							
 						else
-							PlayerTable[i] = nil
+							local body = TableValue[2]:Get()
+							local result = JSON.Decode(body)
+							if result ~= nil then
+								-- Get the heroes table
+								local heroesResult = result.heroes
+								
+								table.sort(heroesResult, function (left, right)
+									return left['matchCount'] > right['matchCount']
+								end)
+								
+								--for ii = 1, #heroesResult do
+									--Console.Print(heroesResult[ii].matchCount)
+								--end
+								--Console.Print(#heroesResult)
+								PlayerTable[i] = {
+									TableValue[1],
+									heroesResult,
+									true,
+									{nil, nil, nil, nil},
+									{nil, nil, nil},
+									{nil, nil, nil},
+									{
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil},
+										{nil, nil, nil, nil, nil}
+									}
+								}
+								
+								local Separator = (i - 6) * 10
+								local OffsetXcoor = (160 * (i-6)) + xDefault + Separator
+								
+								-- Setup for Text Player Name
+								local WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontPlayerName, TableValue[1])
+								-- Get mid position x,y for player name
+								local CoorXTemp = OffsetXcoor + MathFunction.Floor((160 - WidthTemp) * 0.5)
+								local CoorYTemp = yDefault + 330 + MathFunction.Floor((250 * 0.1) - HeightTemp)
+								PlayerTable[i][4][1] = OffsetXcoor
+								PlayerTable[i][4][2] = yDefault + 330
+								PlayerTable[i][4][3] = CoorXTemp
+								PlayerTable[i][4][4] = CoorYTemp
+								
+								
+								-- Setup for Text Total Matches found from STRATZ API
+								WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches, "Matches: " .. result.matchCount .. "/25")
+								CoorXTemp = (OffsetXcoor + 10) + MathFunction.Floor((160 - WidthTemp) * 0.5)
+								CoorYTemp = CoorYTemp + HeightTemp + 20
+								PlayerTable[i][5][1] = "Matches: " .. MathFunction.Floor(result.matchCount) .. "/25"
+								PlayerTable[i][5][2] = CoorXTemp
+								PlayerTable[i][5][3] = CoorYTemp
+
+								-- Setup for Text Win Count from Total Matches
+								WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches, "Win: " .. result.winCount)
+								CoorXTemp = (OffsetXcoor + 10) + MathFunction.Floor((160 - WidthTemp) * 0.5)
+								CoorYTemp = CoorYTemp + HeightTemp
+								PlayerTable[i][6][1] = "Win: " .. MathFunction.Floor(result.winCount)
+								PlayerTable[i][6][2] = CoorXTemp
+								PlayerTable[i][6][3] = CoorYTemp
+								
+								if #heroesResult > 0 then
+									for TableIndex = 1, 9 do
+										local Value = heroesResult[TableIndex]
+										if Value ~= nil then
+											if TableIndex >= 1 and TableIndex <= 3 then
+												local CoordinateX = (OffsetXcoor + 10) + ((TableIndex - 1) * 45) + ((TableIndex - 1) * 5)
+												local CoordinateY = CoorYTemp + 40
+												PlayerTable[i][7][TableIndex][1] = CoordinateX
+												
+												PlayerTable[i][7][TableIndex][2] = CoordinateY
+												
+												DotaCompanion.LoadImage("icon_", HeroesID[Value.heroId], Assets.Path)
+												
+												
+												WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches2, MathFunction.Floor(Value.matchCount))
+												PlayerTable[i][7][TableIndex][3] = MathFunction.Floor(Value.matchCount)
+												PlayerTable[i][7][TableIndex][4] = CoordinateX + (45 - (WidthTemp * 2))
+												PlayerTable[i][7][TableIndex][5] = CoordinateY + (40 - (HeightTemp * 1.5))
+											elseif TableIndex >= 4 and TableIndex <= 6 then
+												local CoordinateX = (OffsetXcoor + 10) + ((TableIndex - 4) * 45) + ((TableIndex - 4) * 5)
+												local CoordinateY = CoorYTemp + 40 + 40 + 10
+												PlayerTable[i][7][TableIndex][1] = CoordinateX
+												
+												PlayerTable[i][7][TableIndex][2] = CoordinateY
+												
+												DotaCompanion.LoadImage("icon_", HeroesID[Value.heroId], Assets.Path)
+												
+												
+												WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches2, MathFunction.Floor(Value.matchCount))
+												PlayerTable[i][7][TableIndex][3] = MathFunction.Floor(Value.matchCount)
+												PlayerTable[i][7][TableIndex][4] = CoordinateX + (45 - (WidthTemp * 2))
+												PlayerTable[i][7][TableIndex][5] = CoordinateY + (40 - (HeightTemp * 1.5))
+											elseif TableIndex >= 7 and TableIndex <= 9 then
+												local CoordinateX = (OffsetXcoor + 10) + ((TableIndex - 7) * 45) + ((TableIndex - 7) * 5)
+												local CoordinateY = CoorYTemp + 40 + 80 + 20
+												PlayerTable[i][7][TableIndex][1] = CoordinateX
+												
+												PlayerTable[i][7][TableIndex][2] = CoordinateY
+												
+												DotaCompanion.LoadImage("icon_", HeroesID[Value.heroId], Assets.Path)
+												
+												WidthTemp, HeightTemp = Renderer.MeasureText(DotaCompanion.FontTotalMatches2, MathFunction.Floor(Value.matchCount))
+												PlayerTable[i][7][TableIndex][3] = MathFunction.Floor(Value.matchCount)
+												PlayerTable[i][7][TableIndex][4] = CoordinateX + (45 - (WidthTemp * 2))
+												PlayerTable[i][7][TableIndex][5] = CoordinateY + (40 - (HeightTemp * 1.5))
+											end
+										end
+									end
+								end
+							else
+								PlayerTable[i] = nil
+							end -- End if result ~= nil
 						end
 						DotaCompanion.NextTick = os.clock() + 0.7
-					end
-				elseif TableValue[3] == true and DotaCompanion.StateShowButton == true then	
-					if #TableValue[2] > 0 then
-						Renderer.SetDrawColor(255, 255, 255, 255)
-						
-						local TableSize = #TableValue[2]
-						for HeroesTable = 1, TableSize do
-							local Value = TableValue[2][HeroesTable]
-							if Value then
-								Renderer.DrawImage(Assets.Images["icon_" .. HeroesID[Value.heroId]], TableValue[5][HeroesTable][1], TableValue[5][HeroesTable][2], Assets.DefaultWidthSize, Assets.DefaultHeightSize)
-						
-								Renderer.DrawText(DotaCompanion.FontCooldown, TableValue[5][HeroesTable][1], TableValue[6][HeroesTable][1], TableValue[6][HeroesTable][2] )
-								
-								Renderer.DrawText(DotaCompanion.FontCooldown, TableValue[5][HeroesTable][1], TableValue[7][HeroesTable][1], TableValue[7][HeroesTable][2] )
-							end
+					end -- End if DotaCompanion.NextTick < os.clock()
+				elseif TableValue[3] == true and DotaCompanion.StateShowButton == true then
+					Renderer.SetDrawColor(93, 117, 124, 255)
+					Renderer.DrawFilledRect(TableValue[4][1], TableValue[4][2], 160, 250)
+					Renderer.SetDrawColor(PlayerColor[i][1], PlayerColor[i][2], PlayerColor[i][3], 255)
+					Renderer.DrawText(DotaCompanion.FontPlayerName, TableValue[4][3], TableValue[4][4], TableValue[1])
+					
+					Renderer.SetDrawColor(255, 255, 255, 255)
+					Renderer.DrawText(DotaCompanion.FontTotalMatches, TableValue[5][2], TableValue[5][3], TableValue[5][1])
+					
+					Renderer.SetDrawColor(255, 255, 255, 255)
+					Renderer.DrawText(DotaCompanion.FontTotalMatches, TableValue[6][2], TableValue[6][3], TableValue[6][1])
+					
+					for TableIndex = 1, 9 do
+						local Value = TableValue[2][TableIndex]
+						if Value ~= nil and TableValue[7][TableIndex] ~= nil then
+							--Console.Print(HeroesID[MathFunction.Floor(Value.heroId)])
+							Renderer.DrawImage(Assets.Images["icon_" .. HeroesID[Value.heroId] ], TableValue[7][TableIndex][1], TableValue[7][TableIndex][2], 45, 40)
+							
+							Renderer.DrawText(DotaCompanion.FontTotalMatches, TableValue[7][TableIndex][4], TableValue[7][TableIndex][5], TableValue[7][TableIndex][3])
 						end
-						Renderer.SetDrawColor(255, 255, 100, 255)
-						Renderer.DrawText(DotaCompanion.FontCooldown, TableValue[4][1], TableValue[4][2], TableValue[1] .. " : ")
-					else
-						Renderer.SetDrawColor(255, 255, 100, 255)
-						Renderer.DrawText(DotaCompanion.FontCooldown, TableValue[4][1], TableValue[4][2], TableValue[1] .. " : Data not found")
 					end
 					
-				end
-			end
+					
+				end -- End if TableValue[3] == false and TableValue[2]:IsResolved()
+			end -- End if TableValue ~= nil and TableValue[2] ~= nil
+		end
+		
+		if DotaCompanion.StateShowButton == true then
+			Renderer.SetDrawColor(255, 255, 255, 255)
+			Renderer.DrawImage(Assets.Images["Menu_quit"], Menu.GetValue(DotaCompanion.offsetX),Menu.GetValue(DotaCompanion.offsetY), Menu.GetValue(DotaCompanion.size), Menu.GetValue(DotaCompanion.size))
+		else
+			Renderer.SetDrawColor(255, 255, 255, 255)
+			Renderer.DrawImage(Assets.Images["Menu_dotaplus_logo"], Menu.GetValue(DotaCompanion.offsetX),  Menu.GetValue(DotaCompanion.offsetY), Menu.GetValue(DotaCompanion.size), Menu.GetValue(DotaCompanion.size))
 		end
 		
 		if Input.IsCursorInRect(Menu.GetValue(DotaCompanion.offsetX),  Menu.GetValue(DotaCompanion.offsetY), Menu.GetValue(DotaCompanion.size), Menu.GetValue(DotaCompanion.size)) then
@@ -479,20 +629,12 @@ function DotaCompanion.OnDraw()
 			end
 		end
 		
-		if DotaCompanion.StateShowButton == true then
-			Renderer.SetDrawColor(255, 255, 255, 255)
-			Renderer.DrawImage(Assets.Images["Menu_quit"], Menu.GetValue(DotaCompanion.offsetX),  Menu.GetValue(DotaCompanion.offsetY), Menu.GetValue(DotaCompanion.size), Menu.GetValue(DotaCompanion.size))
-		else
-			Renderer.SetDrawColor(255, 255, 255, 255)
-			Renderer.DrawImage(Assets.Images["Menu_dotaplus_logo"], Menu.GetValue(DotaCompanion.offsetX),  Menu.GetValue(DotaCompanion.offsetY), Menu.GetValue(DotaCompanion.size), Menu.GetValue(DotaCompanion.size))
-		end
-	end
-	
-	if Menu.IsKeyDownOnce(DotaCompanion.KeyShowHide) then
-		if DotaCompanion.StateShowButton == false then
-			DotaCompanion.StateShowButton = true
-		else
-			DotaCompanion.StateShowButton = false
+		if Menu.IsKeyDownOnce(DotaCompanion.KeyShowHide) then
+			if DotaCompanion.StateShowButton == false then
+				DotaCompanion.StateShowButton = true
+			else
+				DotaCompanion.StateShowButton = false
+			end
 		end
 	end
 end
