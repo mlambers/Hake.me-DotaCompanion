@@ -1,5 +1,5 @@
 -----------------
--- Version 0.5 --
+-- Version 0.6 --
 -----------------
 
 local DotaCompanion = {}
@@ -18,6 +18,9 @@ DotaCompanion.NextTick = 0
 local PlayerTable = {nil, nil, nil, nil, nil, nil, nil, nil, nil, nil}
 local BanList = {}
 local Ctr = 0
+
+DotaCompanion.SecondPhase = false
+
 local HeroesID = {
 	"npc_dota_hero_antimage",
 	"npc_dota_hero_axe",
@@ -138,10 +141,12 @@ local HeroesID = {
 	nil,
 	nil,
 	"npc_dota_hero_dark_willow",
-	"npc_dota_hero_pangolier"
+	"npc_dota_hero_pangolier",
+	"npc_dota_hero_grimstroke"
 }
 
 function DotaCompanion.OnScriptLoad()
+	DotaCompanion.OutsideGameReset = false
 	for i = #PlayerTable, 1, -1 do
 		PlayerTable[i] = nil
 	end
@@ -153,11 +158,13 @@ function DotaCompanion.OnScriptLoad()
 	BanList = {}
 	Ctr = 0
 	DotaCompanion.NextTick = 0
-	DotaCompanion.OutsideGameReset = false
+	
 	DotaCompanion.DoneLoadAll = false
 	DotaCompanion.CanDraw = false
 	DotaCompanion.NeedInit = true
 	
+	
+	DotaCompanion.SecondPhase = false
 	Console.Print("DotaCompanion.OnScriptLoad()")
 end
 
@@ -177,7 +184,7 @@ function DotaCompanion.OnGameEnd()
 	DotaCompanion.DoneLoadAll = false
 	DotaCompanion.CanDraw = false
 	DotaCompanion.NeedInit = true
-	
+	DotaCompanion.SecondPhase = false
 	
 	Console.Print("DotaCompanion.OnGameEnd()")
 end
@@ -234,6 +241,30 @@ function DotaCompanion.StringBuilder(Text)
 	return TextResult:gsub("^%l", string.upper)
 end
 
+function DotaCompanion.GetRole(id)
+	if id == 1 then
+		return '<font color="#00C0C0">Support</font>'
+	elseif id == 0 then	
+		return '<font color="#FF4000">Core</font>'
+	else
+		return "Unknown"
+	end
+end
+
+function DotaCompanion.GetWinRate( ... )
+	local arg = {...}
+	local result = 100 * (arg[1] / arg[2])
+	return DotaCompanion.RoundNumber(result, 2)
+end
+
+function DotaCompanion.GetMatchResult(id)
+	if id == 0 then
+		return '<font color="Green">W</font>'
+	else
+		return '<font color="Red">L</font>'
+	end
+end
+
 function DotaCompanion.OnDraw()
 	-- Check if Player in a match or not
 	if Engine.IsInGame() == false then 
@@ -258,125 +289,192 @@ function DotaCompanion.OnDraw()
 		end
 	end
 	
-	if not Menu.IsEnabled(DotaCompanion.optionEnable) then return end
-	if GameRules.GetGameState() < 2 then return end
-	if Entity.GetTeamNum(Players.GetLocal()) == 1 then return end
-	if DotaCompanion.NeedInit == true then
-		local GetTotalGames = Menu.GetValue(DotaCompanion.TotalGames)
-		for i = 1, Players.Count() do
-			local EntityPlayer = Players.Get(i)
-			if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.IsSameTeam(Players.GetLocal(), EntityPlayer) == false 
-			then
-				
-				PlayerTable[Player.GetPlayerID(EntityPlayer) + 1] = {
-					DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid),
-					Player.GetName(EntityPlayer),
-					HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid) .. "/behaviorChart?lobbyType=7&isParty=false&take=" .. GetTotalGames):AsyncRequest("GET")
-				}
+	if Engine.IsInGame() == true then
+		if Menu.IsEnabled(DotaCompanion.optionEnable) == false then return end
+		if GameRules.GetGameState() < 2 then return end
+		if Entity.GetTeamNum(Players.GetLocal()) == 1 then return end
+	
+		if DotaCompanion.NeedInit == true then
+			local GetTotalGames = Menu.GetValue(DotaCompanion.TotalGames)
+			for i = 1, Players.Count() do
+				local EntityPlayer = Players.Get(i)
+				if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.IsSameTeam(Players.GetLocal(), EntityPlayer) == false 
+				--if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.GetTeamNum(EntityPlayer) == 2 
+				then
+					
+					PlayerTable[Player.GetPlayerID(EntityPlayer) + 1] = {
+						DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid),
+						Player.GetName(EntityPlayer),
+						HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid) .. "/behaviorChart?lobbyType=7&isParty=false&take=" .. GetTotalGames):AsyncRequest("GET"),
+						nil, -- This is reserved for Role analysis
+						false,
+						0, 
+						false,
+						nil,
+						nil,
+						nil
+					}
+				end
 			end
+			
+			
+			DotaCompanion.OutsideGameReset = true
+			DotaCompanion.NextTick = os.clock() + 3.0
+			DotaCompanion.CanDraw = true
+			DotaCompanion.NeedInit = false
 		end
 		
-		
-		DotaCompanion.OutsideGameReset = true
-		DotaCompanion.NextTick = os.clock() + 3.0
-		DotaCompanion.CanDraw = true
-		DotaCompanion.NeedInit = false
-	end
-	
-	if DotaCompanion.CanDraw == true then
-		if DotaCompanion.NextTick < os.clock() and DotaCompanion.DoneLoadAll == false then
-			for i = 1, 10 do
-				local TableValue = PlayerTable[i]
-				if TableValue ~= nil then
-					if TableValue[3] ~= nil and TableValue[3]:IsResolved() then
-						local body = TableValue[3]:Get()
-						local result = JSON.Decode(body)
-						
-						if result ~= nil then
-							local heroesResult = result.heroes
+		if DotaCompanion.CanDraw == true then
+			if DotaCompanion.NextTick < os.clock() and DotaCompanion.DoneLoadAll == false then
+				for i = 1, 10 do
+					local TableValue = PlayerTable[i]
+					if TableValue ~= nil then
+						-- Check if request is resolved
+						if TableValue[3] ~= nil and TableValue[3]:IsResolved() then
+							local body = TableValue[3]:Get()
+							local result = JSON.Decode(body)
+							
+							if result ~= nil and result.matchCount > 0 then
+								local heroesResult = result.heroes
 								
-							table.sort(heroesResult, function (left, right)
-								return left['matchCount'] > right['matchCount']
-							end)
-							if #heroesResult > 0 then
-								for TableIndex = 1, #heroesResult do
-									local Value = heroesResult[TableIndex]
-									if Value ~= nil then
-										local NameValue = HeroesID[Value.heroId]
-										if DotaCompanion.TableElementExist(NameValue) == true then
-											local idx = DotaCompanion.GetTableIndex(NameValue)
-											BanList[idx][2] = BanList[idx][2] + Value.matchCount
-											BanList[idx][3] = BanList[idx][3] + Value.winCount
+								-- Dump the Matches data into my table
+								
+								for y = 1, 10 do
+									local TabVal = result.matches[y]
+									
+									if TabVal ~= nil then
+										if y == 1 then
+											PlayerTable[i][9] = '→ ' .. DotaCompanion.GetMatchResult(TabVal.gameResult)
 										else
-											BanList[#BanList + 1] = {
-												NameValue,
-												Value.matchCount,
-												Value.winCount,
-												nil
-											}
-											
+											PlayerTable[i][9] = PlayerTable[i][9] .. " " .. DotaCompanion.GetMatchResult(TabVal.gameResult)
 										end
 									end
 								end
+								
+								if #heroesResult > 0 then
+									table.sort(heroesResult, function (left, right)
+										return left['matchCount'] > right['matchCount']
+									end)
+									
+									for TableIndex = 1, #heroesResult do
+										local Value = heroesResult[TableIndex]
+										if Value ~= nil then
+											local NameValue = HeroesID[Value.heroId]
+											
+											if DotaCompanion.TableElementExist(NameValue) == true then
+												local idx = DotaCompanion.GetTableIndex(NameValue)
+												BanList[idx][2] = BanList[idx][2] + Value.matchCount
+												BanList[idx][3] = BanList[idx][3] + Value.winCount
+											else
+												BanList[#BanList + 1] = {
+													NameValue,
+													Value.matchCount,
+													Value.winCount,
+													nil
+												}
+												
+											end
+										end
+									end
+									
+								end
+							
 							end
-						else
-							PlayerTable[i] = nil
+							
+							PlayerTable[i][3] = nil
 						end
-						
-					end
-					
-				end
-			end
-			
-			if #BanList > 0 then
-				for  i = 1, #BanList do
-					local GetVal = BanList[i]
-					
-					if GetVal ~= nil then
-						local AgrestiVal = DotaCompanion.AgrestiCoullLower(GetVal[2], GetVal[3])
-						BanList[i][4] = AgrestiVal
 					end
 				end
 				
-				table.sort(BanList, function (left, right)
-					return left[4] > right[4]
-				end)
-				local PrintText = ""
-				Chat.Print("ConsoleChat", '<font color="White">Suggested bans (Confidence rate): </font>')
-					
-				for  i = 1, 5 do
-					local GetVal = BanList[i]
-							
-					if GetVal ~= nil then
-						PrintText = PrintText .. " " .. i .. ". " .. DotaCompanion.StringBuilder(GetVal[1])
+				if #BanList > 0 then
+					for  i = 1, #BanList do
+						local GetVal = BanList[i]
 						
-							
+						if GetVal ~= nil then
+							local AgrestiVal = DotaCompanion.AgrestiCoullLower(GetVal[2], GetVal[3])
+							BanList[i][4] = AgrestiVal
+						end
 					end
-				end
-				Chat.Print("ConsoleChat", '<font color="Cyan">' .. PrintText .. '</font>')
-				
-				table.sort(BanList, function (left, right)
-					return left[2] > right[2]
-				end)
-				PrintText = ""
-				Chat.Print("ConsoleChat", '<font color="White">Suggested bans (Total match): </font>')
 					
-				for  i = 1, 5 do
-					local GetVal = BanList[i]
+					table.sort(BanList, function (left, right)
+						return left[4] > right[4]
+					end)
+					local PrintText = ""
+					Chat.Print("ConsoleChat", '<font color="White">Suggested bans (Confidence rate): </font>')
+					
+					for  i = 1, 5 do
+						local GetVal = BanList[i]
+								
+						if GetVal ~= nil then
+							PrintText = PrintText .. " " .. i .. ". " .. DotaCompanion.StringBuilder(GetVal[1])
 							
-					if GetVal ~= nil then
-						PrintText = PrintText .. " " .. i .. ". " .. DotaCompanion.StringBuilder(GetVal[1])
+								
+						end
 					end
+					Chat.Print("ConsoleChat", '<font color="Cyan">' .. PrintText .. '</font>')
+					
+					table.sort(BanList, function (left, right)
+						return left[2] > right[2]
+					end)
+					PrintText = ""
+					Chat.Print("ConsoleChat", '<font color="White">Suggested bans (Total match): </font>')
+						
+					for  i = 1, 5 do
+						local GetVal = BanList[i]
+								
+						if GetVal ~= nil then
+							PrintText = PrintText .. " " .. i .. ". " .. DotaCompanion.StringBuilder(GetVal[1])
+						end
+					end
+					Chat.Print("ConsoleChat", '<font color="Orange">' .. PrintText .. '</font>')
+					
 				end
-				Chat.Print("ConsoleChat", '<font color="Orange">' .. PrintText .. '</font>')
+				DotaCompanion.SecondPhase = true
+				DotaCompanion.DoneLoadAll = true
 			end
 			
+			if DotaCompanion.SecondPhase == true then
+				for i = 1, #PlayerTable do
+					local TableValue = PlayerTable[i]
+					if TableValue ~= nil then
+						if TableValue[5] == false then
+							PlayerTable[i][4] = HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. PlayerTable[i][1] .. "/summary"):AsyncRequest("GET")
+							PlayerTable[i][5] = true
+							PlayerTable[i][6] = os.clock() + 2.0
+							
+						elseif TableValue[5] == true and TableValue[7] == false then
+							if TableValue[6] < os.clock() and TableValue[4] ~= nil and TableValue[4]:IsResolved() then
+								local body = TableValue[4]:Get()
+								local result = JSON.Decode(body)
+								if result ~= nil then
+									
+									
+									Chat.Print("ConsoleChat", '<font color="#FF4040">' .. TableValue[2] .. '</font>')
+									Chat.Print("ConsoleChat", TableValue[9])
+									
+									
+									for k, v in pairs(result.allTime.roleMatches) do
+										if k == 1 then
+											PlayerTable[i][8] =  "Role: " .. DotaCompanion.GetRole(v.id) .. " Matches: " .. math.floor(v.matchCount) .. " Win rate: " .. DotaCompanion.GetWinRate(v.win, v.matchCount) .. "%"
+										else
+											PlayerTable[i][8] = PlayerTable[i][8] .. '<font color="White"> | </font>' .. "Role: " .. DotaCompanion.GetRole(v.id) .. " Matches: " .. math.floor(v.matchCount) .. " Win rate: " .. DotaCompanion.GetWinRate(v.win, v.matchCount) .. "%"
+										end
+									end
+									
+									Chat.Print("ConsoleChat", TableValue[8])
+								end
+								PlayerTable[i][4] = nil
+								PlayerTable[i][7] = true
+							end
+						
+						end
+					end
+				end
+			end
 			
-			DotaCompanion.DoneLoadAll = true
 		end
-		
-		
 	end
+	
 end
 
 return DotaCompanion
