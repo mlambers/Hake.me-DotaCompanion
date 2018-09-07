@@ -292,8 +292,9 @@ function DotaCompanion.OnDraw()
 	if Engine.IsInGame() == true then
 		if Menu.IsEnabled(DotaCompanion.optionEnable) == false then return end
 		if GameRules.GetGameState() < 2 then return end
+		if GameRules.GetGameState() > 3 then return end
 		if Entity.GetTeamNum(Players.GetLocal()) == 1 then return end
-	
+		
 		if DotaCompanion.NeedInit == true then
 			local GetTotalGames = Menu.GetValue(DotaCompanion.TotalGames)
 			for i = 1, Players.Count() do
@@ -447,7 +448,7 @@ function DotaCompanion.OnDraw()
 							if TableValue[6] < os.clock() and TableValue[4] ~= nil and TableValue[4]:IsResolved() then
 								local body = TableValue[4]:Get()
 								local result = JSON.Decode(body)
-								if result ~= nil then
+								if result ~= nil and TableValue[9] ~= nil then
 									
 									
 									Chat.Print("ConsoleChat", '<font color="#FF4040">' .. TableValue[2] .. '</font>')
