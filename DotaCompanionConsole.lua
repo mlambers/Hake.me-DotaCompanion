@@ -430,10 +430,11 @@ function DotaCompanion.OnDraw()
 					
 				end
 				DotaCompanion.SecondPhase = true
+				DotaCompanion.NextTick = os.clock() + 15.0
 				DotaCompanion.DoneLoadAll = true
 			end
 			
-			if DotaCompanion.SecondPhase == true then
+			if DotaCompanion.SecondPhase == true and DotaCompanion.NextTick < os.clock() then
 				for i = 1, #PlayerTable do
 					local TableValue = PlayerTable[i]
 					if TableValue ~= nil then
