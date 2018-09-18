@@ -1,5 +1,5 @@
 -----------------
--- Version 0.6 --
+-- Version 0.7 --
 -----------------
 
 local DotaCompanion = {}
@@ -7,6 +7,10 @@ local DotaCompanion = {}
 --*** Menu ***--
 DotaCompanion.optionEnable = Menu.AddOption({ "mlambers", "Dota Companion Console" }, "1. Enable.", "Enable/Disable this script.")
 DotaCompanion.TotalGames = Menu.AddOption({ "mlambers", "Dota Companion Console" }, "2. Total Games", "Total Last x games to parse", 25, 250, 25)
+DotaCompanion.AutoBan = Menu.AddOption({ "mlambers", "Dota Companion Console" }, "3. Enable auto ban", "Enable auto ban")
+DotaCompanion.Mode = Menu.AddOption({"mlambers", "Dota Companion Console"}, "4. Auto ban mode", "mode")
+Menu.SetValueName(DotaCompanion.Mode, 0, "Confidence rate")
+Menu.SetValueName(DotaCompanion.Mode, 1, "Total match")
 --***********--
 
 
@@ -18,7 +22,11 @@ DotaCompanion.NextTick = 0
 local PlayerTable = {nil, nil, nil, nil, nil, nil, nil, nil, nil, nil}
 local BanList = {}
 local Ctr = 0
-
+local Ctr2 = 0
+local Ctr3 = 0
+local Ctr4 = 0
+local BanListSay = false
+local OrderStatus = 0
 DotaCompanion.SecondPhase = false
 
 local HeroesID = {
@@ -157,18 +165,22 @@ function DotaCompanion.OnScriptLoad()
 	end
 	BanList = {}
 	Ctr = 0
+	Ctr2 = 0
+	Ctr3 = 0
+	Ctr4 = 0
 	DotaCompanion.NextTick = 0
 	
 	DotaCompanion.DoneLoadAll = false
 	DotaCompanion.CanDraw = false
 	DotaCompanion.NeedInit = true
-	
-	
+	OrderStatus = 0
+	BanListSay = false
 	DotaCompanion.SecondPhase = false
 	Console.Print("DotaCompanion.OnScriptLoad()")
 end
 
 function DotaCompanion.OnGameEnd()
+	DotaCompanion.OutsideGameReset = false
 	for i = #PlayerTable, 1, -1 do
 		PlayerTable[i] = nil
 	end
@@ -179,13 +191,17 @@ function DotaCompanion.OnGameEnd()
 	end
 	BanList = {}
 	Ctr = 0
+	Ctr2 = 0
+	Ctr3 = 0
+	Ctr4 = 0
 	DotaCompanion.NextTick = 0
-	DotaCompanion.OutsideGameReset = false
+	
 	DotaCompanion.DoneLoadAll = false
 	DotaCompanion.CanDraw = false
 	DotaCompanion.NeedInit = true
 	DotaCompanion.SecondPhase = false
-	
+	BanListSay = false
+	OrderStatus = 0
 	Console.Print("DotaCompanion.OnGameEnd()")
 end
 
@@ -279,11 +295,17 @@ function DotaCompanion.OnDraw()
 				BanList[i] = nil
 			end
 			BanList = {}
-			
+			Ctr = 0
+			Ctr2 = 0
+			Ctr3 = 0
+			Ctr4 = 0
 			DotaCompanion.NextTick = 0
 			DotaCompanion.DoneLoadAll = false
+			DotaCompanion.SecondPhase = false
 			DotaCompanion.CanDraw = false
 			DotaCompanion.NeedInit = true
+			BanListSay = false
+			OrderStatus = 0
 			DotaCompanion.OutsideGameReset = false
 			Console.Print("DotaCompanion.OutsideGameReset()")
 		end
@@ -296,72 +318,184 @@ function DotaCompanion.OnDraw()
 		if Entity.GetTeamNum(Players.GetLocal()) == 1 then return end
 		
 		if DotaCompanion.NeedInit == true then
-			local GetTotalGames = Menu.GetValue(DotaCompanion.TotalGames)
 			for i = 1, Players.Count() do
 				local EntityPlayer = Players.Get(i)
 				if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.IsSameTeam(Players.GetLocal(), EntityPlayer) == false 
-				--if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.GetTeamNum(EntityPlayer) == 2 
+				--if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.GetTeamNum(EntityPlayer) == 2
 				then
-					
+					Console.Print(Player.GetName(EntityPlayer))
 					PlayerTable[Player.GetPlayerID(EntityPlayer) + 1] = {
 						DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid),
 						Player.GetName(EntityPlayer),
-						HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid) .. "/behaviorChart?lobbyType=7&isParty=false&take=" .. GetTotalGames):AsyncRequest("GET"),
-						nil, -- This is reserved for Role analysis
-						false,
-						0, 
-						false,
-						nil,
-						nil,
-						nil
+						HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid)):AsyncRequest("GET"),
+						nil, -- Array number 4, This is reserved to indicate Private profile or not
+						nil, -- Array number 5, This is reserved for API get behaviorChart
+						nil, -- Array number 6, This is reserved for 10 games result to print in chat
+						nil, --  Array number 7, This is reserved for roles API analysis
+						nil -- Array number 8, store roles to print in chat
 					}
+					
 				end
 			end
 			
 			
 			DotaCompanion.OutsideGameReset = true
-			DotaCompanion.NextTick = os.clock() + 3.0
+			DotaCompanion.NextTick = os.clock() + 5.0
 			DotaCompanion.CanDraw = true
+			OrderStatus = 1
 			DotaCompanion.NeedInit = false
 		end
 		
 		if DotaCompanion.CanDraw == true then
-			if DotaCompanion.NextTick < os.clock() and DotaCompanion.DoneLoadAll == false then
+			if Ctr == 5 and OrderStatus == 1 then
+				Console.Print("First phase, order enum: " .. OrderStatus)
+				OrderStatus = 2
+				DotaCompanion.NextTick = os.clock() + 3.0
+			end
+			
+			if Ctr2 == 5 and OrderStatus == 2 then
+				Console.Print("Second phase, order enum: " .. OrderStatus)
+				OrderStatus = 3
+				BanListSay = true
+			end
+			
+			if Ctr3 == 5 and OrderStatus == 3 then
+				Console.Print("Third phase, order enum: " .. OrderStatus .. " Debug CTR number: " .. Ctr3)
+				DotaCompanion.NextTick = os.clock() + 3.0
+				OrderStatus = 4
+			end
+			
+			if Ctr4 == 5 and OrderStatus == 4 then
+				Console.Print("Fourth phase, order enum: " .. OrderStatus .. " Debug CTR number: " .. Ctr4)
+				OrderStatus = 5
+			end
+			
+			if BanListSay == true then
+				if #BanList > 0 then
+					for  i = 1, #BanList do
+						local GetVal = BanList[i]
+							
+						if GetVal ~= nil then
+							local AgrestiVal = DotaCompanion.AgrestiCoullLower(GetVal[2], GetVal[3])
+							BanList[i][4] = AgrestiVal
+						end
+					end
+						
+					table.sort(BanList, function (left, right)
+						return left[4] > right[4]
+					end)
+					
+					local PrintText = ""
+					Chat.Print("ConsoleChat", '<font color="White">Suggested bans (Confidence rate): </font>')
+						
+					for  i = 1, 5 do
+						local GetVal = BanList[i]
+									
+						if GetVal ~= nil then
+							PrintText = PrintText .. " " .. i .. ". " .. DotaCompanion.StringBuilder(GetVal[1])
+							if Menu.IsEnabled(DotaCompanion.AutoBan) == true and Menu.GetValue(DotaCompanion.Mode) == 0 then 
+								Engine.ExecuteCommand("dota_captain_ban_hero " .. GetVal[1])
+								Console.Print("Auto ban: " .. GetVal[1])
+							end
+						end
+					end
+					Chat.Print("ConsoleChat", '<font color="Cyan">' .. PrintText .. '</font>')
+						
+					table.sort(BanList, function (left, right)
+						return left[2] > right[2]
+					end)
+					PrintText = ""
+					Chat.Print("ConsoleChat", '<font color="White">Suggested bans (Total match): </font>')
+							
+					for  i = 1, 5 do
+						local GetVal = BanList[i]
+									
+						if GetVal ~= nil then
+							PrintText = PrintText .. " " .. i .. ". " .. DotaCompanion.StringBuilder(GetVal[1])
+							if Menu.IsEnabled(DotaCompanion.AutoBan) == true and Menu.GetValue(DotaCompanion.Mode) == 1 then 
+								Engine.ExecuteCommand("dota_captain_ban_hero " .. GetVal[1])
+								Console.Print("Auto ban: " .. GetVal[1])
+							end
+							
+						end
+					end
+					Chat.Print("ConsoleChat", '<font color="Orange">' .. PrintText .. '</font>')
+				else
+					Chat.Print("ConsoleChat", '<font color="Orange">No matches found from scanner.</font>')
+				end
+				
+				BanListSay = false
+				Console.Print("Done with BanList")
+				DotaCompanion.NextTick = os.clock() + 15.0
+			end
+			
+			-- Order status : 1
+			-- Job: Send API query
+			-- Purpose: Get heroes from desired API parameter for banlist heroes
+			if DotaCompanion.NextTick < os.clock() and OrderStatus == 1 then
+				local GetTotalGames = Menu.GetValue(DotaCompanion.TotalGames)
 				for i = 1, 10 do
 					local TableValue = PlayerTable[i]
 					if TableValue ~= nil then
-						-- Check if request is resolved
-						if TableValue[3] ~= nil and TableValue[3]:IsResolved() then
+						if TableValue[4] == nil and TableValue[3] ~= nil and TableValue[3]:IsResolved() then
 							local body = TableValue[3]:Get()
 							local result = JSON.Decode(body)
+							if result ~= nil and result.isAnonymous == false then
+								PlayerTable[i][3] = nil
+								PlayerTable[i][4] = false
+								PlayerTable[i][5] = HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. TableValue[1] .. "/behaviorChart?lobbyType=7&isParty=false&take=" .. GetTotalGames):AsyncRequest("GET")
+								Console.Print(TableValue[2] .. " - Not private")
+							else
+								PlayerTable[i][3] = nil
+								PlayerTable[i][4] = true
+								Ctr2 = Ctr2 + 1
+								Console.Print(TableValue[2] .. " - Private profile")
+							end
+							Ctr = Ctr + 1
+						end
+					end
+				end
+			end
+			
+			-- Order status: 2
+			-- Job: Retrieve API result from order status 1
+			-- Purpose: Explained above
+			if DotaCompanion.NextTick < os.clock() and OrderStatus == 2
+			then
+				for i = 1, 10 do
+					local TableValue = PlayerTable[i]
+					if TableValue ~= nil then
+						if TableValue[4] == false and TableValue[5] ~= nil and TableValue[5]:IsResolved() then
+							local body = TableValue[5]:Get()
+							local result = JSON.Decode(body)
 							
-							if result ~= nil and result.matchCount > 0 then
-								local heroesResult = result.heroes
-								
-								-- Dump the Matches data into my table
-								
-								for y = 1, 10 do
-									local TabVal = result.matches[y]
+							if type(result) == "table" then
+								Console.Print(TableValue[2] .. " Matches: " ..result.matchCount)
+								if result.matchCount > 0 then
+									-- Dump last 10 result
+									for y = 1, 10 do
+										local TabVal = result.matches[y]
 									
-									if TabVal ~= nil then
-										if y == 1 then
-											PlayerTable[i][9] = '→ ' .. DotaCompanion.GetMatchResult(TabVal.gameResult)
-										else
-											PlayerTable[i][9] = PlayerTable[i][9] .. " " .. DotaCompanion.GetMatchResult(TabVal.gameResult)
+										if TabVal ~= nil then
+											if y == 1 then
+												PlayerTable[i][6] = '→ ' .. DotaCompanion.GetMatchResult(TabVal.gameResult)
+											else
+												PlayerTable[i][6] = PlayerTable[i][6] .. " " .. DotaCompanion.GetMatchResult(TabVal.gameResult)
+											end
 										end
 									end
-								end
-								
-								if #heroesResult > 0 then
-									table.sort(heroesResult, function (left, right)
-										return left['matchCount'] > right['matchCount']
-									end)
 									
+									local heroesResult = result.heroes
+									
+									table.sort(heroesResult, function (left, right)
+											return left['matchCount'] > right['matchCount']
+										end)
+										
 									for TableIndex = 1, #heroesResult do
 										local Value = heroesResult[TableIndex]
 										if Value ~= nil then
 											local NameValue = HeroesID[Value.heroId]
-											
+												
 											if DotaCompanion.TableElementExist(NameValue) == true then
 												local idx = DotaCompanion.GetTableIndex(NameValue)
 												BanList[idx][2] = BanList[idx][2] + Value.matchCount
@@ -373,110 +507,81 @@ function DotaCompanion.OnDraw()
 													Value.winCount,
 													nil
 												}
-												
+													
 											end
 										end
 									end
 									
 								end
-							
 							end
 							
-							PlayerTable[i][3] = nil
+							Ctr2 = Ctr2 + 1
+							PlayerTable[i][5] = nil
 						end
 					end
 				end
-				
-				if #BanList > 0 then
-					for  i = 1, #BanList do
-						local GetVal = BanList[i]
-						
-						if GetVal ~= nil then
-							local AgrestiVal = DotaCompanion.AgrestiCoullLower(GetVal[2], GetVal[3])
-							BanList[i][4] = AgrestiVal
-						end
-					end
-					
-					table.sort(BanList, function (left, right)
-						return left[4] > right[4]
-					end)
-					local PrintText = ""
-					Chat.Print("ConsoleChat", '<font color="White">Suggested bans (Confidence rate): </font>')
-					
-					for  i = 1, 5 do
-						local GetVal = BanList[i]
-								
-						if GetVal ~= nil then
-							PrintText = PrintText .. " " .. i .. ". " .. DotaCompanion.StringBuilder(GetVal[1])
-							
-								
-						end
-					end
-					Chat.Print("ConsoleChat", '<font color="Cyan">' .. PrintText .. '</font>')
-					
-					table.sort(BanList, function (left, right)
-						return left[2] > right[2]
-					end)
-					PrintText = ""
-					Chat.Print("ConsoleChat", '<font color="White">Suggested bans (Total match): </font>')
-						
-					for  i = 1, 5 do
-						local GetVal = BanList[i]
-								
-						if GetVal ~= nil then
-							PrintText = PrintText .. " " .. i .. ". " .. DotaCompanion.StringBuilder(GetVal[1])
-						end
-					end
-					Chat.Print("ConsoleChat", '<font color="Orange">' .. PrintText .. '</font>')
-					
-				end
-				DotaCompanion.SecondPhase = true
-				DotaCompanion.NextTick = os.clock() + 15.0
-				DotaCompanion.DoneLoadAll = true
 			end
 			
-			if DotaCompanion.SecondPhase == true and DotaCompanion.NextTick < os.clock() then
+			-- Order status: 3
+			-- Job: Send API query
+			-- Purpose: Get player roles
+			if DotaCompanion.NextTick < os.clock() and OrderStatus == 3 then
 				for i = 1, #PlayerTable do
 					local TableValue = PlayerTable[i]
 					if TableValue ~= nil then
-						if TableValue[5] == false then
-							PlayerTable[i][4] = HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. PlayerTable[i][1] .. "/summary"):AsyncRequest("GET")
-							PlayerTable[i][5] = true
-							PlayerTable[i][6] = os.clock() + 2.0
-							
-						elseif TableValue[5] == true and TableValue[7] == false then
-							if TableValue[6] < os.clock() and TableValue[4] ~= nil and TableValue[4]:IsResolved() then
-								local body = TableValue[4]:Get()
-								local result = JSON.Decode(body)
-								if result ~= nil and TableValue[9] ~= nil then
-									
-									
-									Chat.Print("ConsoleChat", '<font color="#FF4040">' .. TableValue[2] .. '</font>')
-									Chat.Print("ConsoleChat", TableValue[9])
-									
-									
-									for k, v in pairs(result.allTime.roleMatches) do
-										if k == 1 then
-											PlayerTable[i][8] =  "Role: " .. DotaCompanion.GetRole(v.id) .. " Matches: " .. math.floor(v.matchCount) .. " Win rate: " .. DotaCompanion.GetWinRate(v.win, v.matchCount) .. "%"
-										else
-											PlayerTable[i][8] = PlayerTable[i][8] .. '<font color="White"> | </font>' .. "Role: " .. DotaCompanion.GetRole(v.id) .. " Matches: " .. math.floor(v.matchCount) .. " Win rate: " .. DotaCompanion.GetWinRate(v.win, v.matchCount) .. "%"
-										end
-									end
-									
-									Chat.Print("ConsoleChat", TableValue[8])
-								end
-								PlayerTable[i][4] = nil
-								PlayerTable[i][7] = true
-							end
-						
+						if TableValue[4] == false then
+							PlayerTable[i][7] = HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. PlayerTable[i][1] .. "/summary"):AsyncRequest("GET")
 						end
+						Ctr3 = Ctr3 + 1
 					end
 				end
 			end
 			
+			-- Order status: 4
+			-- Job: Retrieve API query + Print roles & 10 matches history.
+			-- Purpose: Explained above
+			if DotaCompanion.NextTick < os.clock() and OrderStatus == 4 then
+				for i = 1, #PlayerTable do
+					local TableValue = PlayerTable[i]
+					if TableValue ~= nil then
+						if TableValue[4] == false then
+							if TableValue[7] ~= nil and TableValue[7]:IsResolved() then
+								local body = TableValue[7]:Get()
+								local result = JSON.Decode(body)
+								if result ~= nil then
+									Console.Print("Get roles for " .. TableValue[2])
+									local MathFloor = math.floor
+									for k, v in pairs(result.allTime.roleMatches) do
+										if k == 1 then
+											PlayerTable[i][8] =  '<font color="White">Role: </font>' .. DotaCompanion.GetRole(v.id) .. '<font color="White"> Matches: ' .. MathFloor(v.matchCount) .. " Win rate: " .. DotaCompanion.GetWinRate(v.win, v.matchCount) .. "%</font>"
+										else
+											PlayerTable[i][8] = PlayerTable[i][8] .. '<font color="White"> | </font>' .. DotaCompanion.GetRole(v.id) .. '<font color="White"> Matches: ' .. MathFloor(v.matchCount) .. " Win rate: " .. DotaCompanion.GetWinRate(v.win, v.matchCount) .. "%</font>"
+										end
+									end
+									Chat.Print("ConsoleChat", '<font color="#FF4040">' .. TableValue[2] .. '</font>')
+									Chat.Print("ConsoleChat", TableValue[8])
+									if TableValue[6] ~= nil then
+										Chat.Print("ConsoleChat", TableValue[6])
+									end
+								else
+									Chat.Print("ConsoleChat", '<font color="#FF4040">' .. TableValue[2] .. '</font>')
+									Chat.Print("ConsoleChat", '<font color="White">Roles not found.</font>')
+									if TableValue[6] ~= nil then
+										Chat.Print("ConsoleChat", TableValue[6])
+									end
+								end
+								PlayerTable[i][7] = nil
+							end
+						else
+							
+							Chat.Print("ConsoleChat", '<font color="#FF4040">' .. TableValue[2] .. '</font><font color="White"> (PRIVATE PROFILE, GDPR RELATED)</font>')
+						end
+						Ctr4 = Ctr4 + 1
+					end
+				end
+			end
 		end
 	end
-	
 end
 
 return DotaCompanion
