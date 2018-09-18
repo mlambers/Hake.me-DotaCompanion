@@ -311,9 +311,10 @@ function DotaCompanion.OnDraw()
 		if Menu.IsEnabled(DotaCompanion.optionEnable) == false then return end
 		if GameRules.GetGameState() < 2 then return end
 		if GameRules.GetGameState() > 3 then return end
-		--if Entity.GetTeamNum(Players.GetLocal()) == 1 then return end
+		if Entity.GetTeamNum(Players.GetLocal()) == 1 then return end
 		
 		if DotaCompanion.NeedInit == true then
+			Log.Write("Local player team num: " .. Entity.GetTeamNum(Players.GetLocal()))
 			for i = 1, Players.Count() do
 				local EntityPlayer = Players.Get(i)
 				if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.IsSameTeam(Players.GetLocal(), EntityPlayer) == false
@@ -322,6 +323,7 @@ function DotaCompanion.OnDraw()
 				
 				--if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.GetTeamNum(EntityPlayer) == 2
 				then
+					Log.Write("Add data, Steam ID: " .. DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid) .. " Team number: " .. Entity.GetTeamNum(EntityPlayer))
 					PlayerTable[Player.GetPlayerID(EntityPlayer) + 1] = {
 						DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid),
 						Player.GetName(EntityPlayer),
