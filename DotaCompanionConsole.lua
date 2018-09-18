@@ -1,6 +1,6 @@
------------------
--- Version 0.7 --
------------------
+------------------
+-- Version 0.7a --
+------------------
 
 local DotaCompanion = {}
 
@@ -13,8 +13,6 @@ Menu.SetValueName(DotaCompanion.Mode, 0, "Confidence rate")
 Menu.SetValueName(DotaCompanion.Mode, 1, "Total match")
 --***********--
 
-
-DotaCompanion.DoneLoadAll = false
 DotaCompanion.OutsideGameReset = false
 DotaCompanion.CanDraw = false
 DotaCompanion.NeedInit = true
@@ -27,7 +25,6 @@ local Ctr3 = 0
 local Ctr4 = 0
 local BanListSay = false
 local OrderStatus = 0
-DotaCompanion.SecondPhase = false
 
 local HeroesID = {
 	"npc_dota_hero_antimage",
@@ -170,12 +167,11 @@ function DotaCompanion.OnScriptLoad()
 	Ctr4 = 0
 	DotaCompanion.NextTick = 0
 	
-	DotaCompanion.DoneLoadAll = false
 	DotaCompanion.CanDraw = false
 	DotaCompanion.NeedInit = true
 	OrderStatus = 0
 	BanListSay = false
-	DotaCompanion.SecondPhase = false
+
 	Console.Print("DotaCompanion.OnScriptLoad()")
 end
 
@@ -199,7 +195,7 @@ function DotaCompanion.OnGameEnd()
 	DotaCompanion.DoneLoadAll = false
 	DotaCompanion.CanDraw = false
 	DotaCompanion.NeedInit = true
-	DotaCompanion.SecondPhase = false
+
 	BanListSay = false
 	OrderStatus = 0
 	Console.Print("DotaCompanion.OnGameEnd()")
@@ -295,17 +291,17 @@ function DotaCompanion.OnDraw()
 				BanList[i] = nil
 			end
 			BanList = {}
+			
+			OrderStatus = 0
 			Ctr = 0
 			Ctr2 = 0
 			Ctr3 = 0
 			Ctr4 = 0
+			BanListSay = false
 			DotaCompanion.NextTick = 0
-			DotaCompanion.DoneLoadAll = false
-			DotaCompanion.SecondPhase = false
 			DotaCompanion.CanDraw = false
 			DotaCompanion.NeedInit = true
-			BanListSay = false
-			OrderStatus = 0
+			
 			DotaCompanion.OutsideGameReset = false
 			Console.Print("DotaCompanion.OutsideGameReset()")
 		end
@@ -315,15 +311,17 @@ function DotaCompanion.OnDraw()
 		if Menu.IsEnabled(DotaCompanion.optionEnable) == false then return end
 		if GameRules.GetGameState() < 2 then return end
 		if GameRules.GetGameState() > 3 then return end
-		if Entity.GetTeamNum(Players.GetLocal()) == 1 then return end
+		--if Entity.GetTeamNum(Players.GetLocal()) == 1 then return end
 		
 		if DotaCompanion.NeedInit == true then
 			for i = 1, Players.Count() do
 				local EntityPlayer = Players.Get(i)
-				if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.IsSameTeam(Players.GetLocal(), EntityPlayer) == false 
+				if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.IsSameTeam(Players.GetLocal(), EntityPlayer) == false
+				
+				--if EntityPlayer and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.GetTeamNum(EntityPlayer) == 2
+				
 				--if EntityPlayer and Entity.IsPlayer(EntityPlayer) and Player.GetPlayerData(EntityPlayer) and Player.GetPlayerData(EntityPlayer).valid == true and Entity.GetTeamNum(EntityPlayer) == 2
 				then
-					Console.Print(Player.GetName(EntityPlayer))
 					PlayerTable[Player.GetPlayerID(EntityPlayer) + 1] = {
 						DotaCompanion.GetFriendsId(Player.GetPlayerData(EntityPlayer).steamid),
 						Player.GetName(EntityPlayer),
@@ -343,31 +341,33 @@ function DotaCompanion.OnDraw()
 			DotaCompanion.NextTick = os.clock() + 5.0
 			DotaCompanion.CanDraw = true
 			OrderStatus = 1
+			Log.Write("Init done, order status = 1")
 			DotaCompanion.NeedInit = false
 		end
 		
 		if DotaCompanion.CanDraw == true then
 			if Ctr == 5 and OrderStatus == 1 then
-				Console.Print("First phase, order enum: " .. OrderStatus)
 				OrderStatus = 2
+				Log.Write("First phase, order enum: " .. OrderStatus)
 				DotaCompanion.NextTick = os.clock() + 3.0
 			end
 			
 			if Ctr2 == 5 and OrderStatus == 2 then
-				Console.Print("Second phase, order enum: " .. OrderStatus)
 				OrderStatus = 3
+				Log.Write("Second phase, order enum: " .. OrderStatus)
 				BanListSay = true
 			end
 			
 			if Ctr3 == 5 and OrderStatus == 3 then
-				Console.Print("Third phase, order enum: " .. OrderStatus .. " Debug CTR number: " .. Ctr3)
-				DotaCompanion.NextTick = os.clock() + 3.0
 				OrderStatus = 4
+				Log.Write("Third phase, order enum: " .. OrderStatus .. " Debug CTR number: " .. Ctr3)
+				DotaCompanion.NextTick = os.clock() + 3.0
 			end
 			
 			if Ctr4 == 5 and OrderStatus == 4 then
-				Console.Print("Fourth phase, order enum: " .. OrderStatus .. " Debug CTR number: " .. Ctr4)
 				OrderStatus = 5
+				Log.Write("Fourth phase, order enum: " .. OrderStatus .. " Debug CTR number: " .. Ctr4)
+				Log.Write("Done all step.")
 			end
 			
 			if BanListSay == true then
@@ -421,11 +421,12 @@ function DotaCompanion.OnDraw()
 					end
 					Chat.Print("ConsoleChat", '<font color="Orange">' .. PrintText .. '</font>')
 				else
+					Log.Write("0 matches found from scanner")
 					Chat.Print("ConsoleChat", '<font color="Orange">No matches found from scanner.</font>')
 				end
 				
 				BanListSay = false
-				Console.Print("Done with BanList")
+				Log.Write("Done with BanList")
 				DotaCompanion.NextTick = os.clock() + 15.0
 			end
 			
@@ -440,16 +441,19 @@ function DotaCompanion.OnDraw()
 						if TableValue[4] == nil and TableValue[3] ~= nil and TableValue[3]:IsResolved() then
 							local body = TableValue[3]:Get()
 							local result = JSON.Decode(body)
-							if result ~= nil and result.isAnonymous == false then
-								PlayerTable[i][3] = nil
-								PlayerTable[i][4] = false
-								PlayerTable[i][5] = HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. TableValue[1] .. "/behaviorChart?lobbyType=7&isParty=false&take=" .. GetTotalGames):AsyncRequest("GET")
-								Console.Print(TableValue[2] .. " - Not private")
-							else
-								PlayerTable[i][3] = nil
-								PlayerTable[i][4] = true
-								Ctr2 = Ctr2 + 1
-								Console.Print(TableValue[2] .. " - Private profile")
+							if result ~= nil then
+								if result.isAnonymous == false then
+									PlayerTable[i][3] = nil
+									PlayerTable[i][4] = false
+									PlayerTable[i][5] = HTTP.NewConnection("https://api.stratz.com/api/v1/Player/" .. TableValue[1] .. "/behaviorChart?lobbyType=7&isParty=false&take=" .. GetTotalGames):AsyncRequest("GET")
+									
+									Log.Write("Steam ID: " .. TableValue[1] .. " Nickname: " .. TableValue[2] .. " - Not private")
+								else
+									PlayerTable[i][3] = nil
+									PlayerTable[i][4] = true
+									Ctr2 = Ctr2 + 1
+									Log.Write("Steam ID: " .. TableValue[1] .. " Nickname: " .. TableValue[2] .. " - Private profile")
+								end
 							end
 							Ctr = Ctr + 1
 						end
@@ -470,7 +474,7 @@ function DotaCompanion.OnDraw()
 							local result = JSON.Decode(body)
 							
 							if type(result) == "table" then
-								Console.Print(TableValue[2] .. " Matches: " ..result.matchCount)
+								Log.Write("Steam ID: " .. TableValue[1] .. " Nickname: " .. TableValue[2] .. " Matches: " ..result.matchCount)
 								if result.matchCount > 0 then
 									-- Dump last 10 result
 									for y = 1, 10 do
